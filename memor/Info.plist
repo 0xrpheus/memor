@@ -8,5 +8,11 @@
 	</array>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>memor reads the system Apple Music now playing item to scrobble tracks to Last.fm.</string>
+    <key>UIAppFonts</key>
+    <array>
+        <string>Lora-Regular.ttf</string>
+        <string>Lora-Italic.ttf</string>
+        <string>Lora-Medium.ttf</string>
+    </array>
 </dict>
 </plist>

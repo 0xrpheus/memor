@@ -2,6 +2,8 @@
 
 A free native iOS scrobbler for Apple Music. It scrobbles even when the song isn't added to your library.
 
+![Screenshot of memor](memor.png)
+
 ---
 
 ## Features
