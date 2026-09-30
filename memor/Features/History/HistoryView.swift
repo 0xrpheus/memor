@@ -4,6 +4,12 @@ struct HistoryView: View {
     @EnvironmentObject private var queue: ScrobbleQueue
     @EnvironmentObject private var authStore: AuthStore
 
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEEE, MMM d"
+        return f
+    }()
+
     private var grouped: [(String, [ScrobbleRecord])] {
         let cal = Calendar.current
         let records = queue.allRecords
@@ -15,9 +21,7 @@ struct HistoryView: View {
             if cal.isDateInToday(record.playedAt)     { label = "today" }
             else if cal.isDateInYesterday(record.playedAt) { label = "yesterday" }
             else {
-                let f = DateFormatter()
-                f.dateFormat = "EEEE, MMM d"
-                label = f.string(from: record.playedAt).lowercased()
+                label = Self.dayFormatter.string(from: record.playedAt).lowercased()
             }
 
             if let idx = seen[label] {
@@ -193,7 +197,7 @@ private struct ErrorBanner: View {
                 Text("\(count) failed scrobble\(count == 1 ? "" : "s")")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(MemorTheme.ink)
-                Text("network error · tap retry to requeue")
+                Text("couldn't be submitted · tap retry to try again")
                     .font(.system(size: 11))
                     .foregroundStyle(MemorTheme.inkSoft)
             }

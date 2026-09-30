@@ -29,6 +29,10 @@ final class AuthViewModel: NSObject, ObservableObject {
                 try await authorize(url: url)
                 let session = try await client.session(for: token)
                 authStore.signIn(session: session)
+            } catch let error as LastFMClient.LastFMError where error.isUnauthorizedToken {
+                // The Last.fm web flow has no callback, so closing the sheet without
+                // approving lands here rather than as a clean cancellation.
+                errorMessage = "Sign-in wasn't completed. Tap sign in and choose \u{201C}Yes, allow access.\u{201D}"
             } catch {
                 errorMessage = error.localizedDescription
             }

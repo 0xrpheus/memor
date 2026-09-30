@@ -20,6 +20,9 @@ final class NowPlayingMonitor: ObservableObject {
     private var lastResumeDate: Date?
     private var lastKnownPlaybackTime: TimeInterval = 0
     private var lastPlaybackTimeDate = Date()
+    /// Wall-clock time the current track started playing, used as the Last.fm scrobble
+    /// timestamp (which must be the track's start, not when the threshold was reached).
+    private var currentTrackStartDate: Date?
 
     init(queue: ScrobbleQueue, authStore: AuthStore, client: LastFMClient) {
         self.queue = queue
@@ -34,8 +37,19 @@ final class NowPlayingMonitor: ObservableObject {
         thresholdTimer?.cancel()
     }
 
+    /// Reconciles our state with the system player after launch or returning to the
+    /// foreground. Unlike the item-changed notification, this must NOT reset progress or
+    /// the scrobbled flag when the same track is still playing — doing so previously reset
+    /// the on-screen progress and could re-scrobble an already-scrobbled track.
     func refreshFromPlayer() {
-        handleNowPlayingItemChange(to: player.nowPlayingItem)
+        let item = player.nowPlayingItem
+        let newTrack = Track(item: item)
+        if newTrack?.id != currentTrack?.id {
+            // The track genuinely changed (e.g. while the app was suspended) — full reset.
+            handleTrackChange(to: newTrack, artwork: artwork(from: item))
+        } else if currentArtwork == nil {
+            currentArtwork = artwork(from: item)
+        }
         handlePlaybackStateChange(to: player.playbackState)
         snapshotPlaybackPosition()
     }
@@ -77,7 +91,8 @@ final class NowPlayingMonitor: ObservableObject {
         observers.append(center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor [weak self] in self?.refreshFromPlayer() }
         })
-        player.beginGeneratingPlaybackNotifications()
+        // Playback-notification generation is owned by AppDelegate (begin/end must be
+        // balanced), so it isn't started again here.
     }
 
     private func handleNowPlayingItemChange(to item: MPMediaItem?) {
@@ -93,6 +108,7 @@ final class NowPlayingMonitor: ObservableObject {
         accumulatedPlayTime = 0
         hasScrobbledCurrentTrack = false
         lastResumeDate = nil
+        currentTrackStartDate = nil
         snapshotPlaybackPosition()
 
         if let newTrack, playbackState == .playing {
@@ -119,6 +135,13 @@ final class NowPlayingMonitor: ObservableObject {
         guard track.shouldEverScrobble, !hasScrobbledCurrentTrack else { return }
         if lastResumeDate == nil {
             lastResumeDate = Date()
+        }
+        if currentTrackStartDate == nil {
+            // Estimate the track's start as now minus its current playback position, so the
+            // scrobble timestamp reflects when the track actually began.
+            let position = player.currentPlaybackTime
+            let elapsed = (position.isFinite && position > 0) ? position : 0
+            currentTrackStartDate = Date().addingTimeInterval(-elapsed)
         }
         Task { [client, authStore] in
             if let sessionKey = authStore.sessionKey {
@@ -178,7 +201,8 @@ final class NowPlayingMonitor: ObservableObject {
         hasScrobbledCurrentTrack = true
         thresholdTimer?.cancel()
         thresholdTimer = nil
-        queue.enqueue(track, sessionKey: authStore.sessionKey)
+        let startedAt = currentTrackStartDate ?? Date().addingTimeInterval(-accumulatedPlayTime)
+        queue.enqueue(track, startedAt: startedAt, sessionKey: authStore.sessionKey)
     }
 
     private func snapshotPlaybackPosition() {

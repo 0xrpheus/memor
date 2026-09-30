@@ -20,6 +20,9 @@ struct Track: Codable, Hashable, Identifiable {
         self.persistentID = persistentID
     }
 
+    /// Returns `nil` for items without a usable title/artist (e.g. some non-library
+    /// streaming items with incomplete metadata); such plays are intentionally skipped
+    /// since Last.fm requires both fields.
     init?(item: MPMediaItem?) {
         guard let item,
               let title = item.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty,

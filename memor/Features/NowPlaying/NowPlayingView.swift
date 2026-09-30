@@ -1,3 +1,4 @@
+import MediaPlayer
 import SwiftUI
 
 struct NowPlayingView: View {
@@ -235,7 +236,7 @@ private struct ScrobblePill: View {
 private struct TransportView: View {
     private let player = MPMusicPlayerController.systemMusicPlayer
 
-    @State private var isPlaying: Bool = true
+    @State private var isPlaying: Bool = false
 
     var body: some View {
         HStack(spacing: 40) {
@@ -249,8 +250,9 @@ private struct TransportView: View {
             .buttonStyle(.plain)
 
             Button {
-                if isPlaying { player.pause() } else { player.play() }
-                isPlaying.toggle()
+                // Drive the toggle from the actual player state; the icon updates from the
+                // playback-state notification rather than an optimistic local flip.
+                if player.playbackState == .playing { player.pause() } else { player.play() }
             } label: {
                 ZStack {
                     Circle()
@@ -283,5 +285,3 @@ private struct TransportView: View {
         }
     }
 }
-
-import MediaPlayer

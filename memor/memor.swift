@@ -14,6 +14,15 @@ struct memorApp: App {
         let client = LastFMClient()
         let authStore = AuthStore()
         let queue = ScrobbleQueue(client: client)
+
+        // Clear the queue on sign-out so a new account never inherits the old one's
+        // history or flushes its pending scrobbles.
+        authStore.onSignOut = { [weak queue] in queue?.reset() }
+        // An invalid session key forces a sign-out, which returns the UI to LoginView.
+        queue.onAuthenticationError = { [weak authStore] in authStore?.signOut() }
+        // Lets the queue retry (connectivity restore / background task) without a caller.
+        queue.sessionKeyProvider = { [weak authStore] in authStore?.sessionKey }
+
         _authStore = StateObject(wrappedValue: authStore)
         _scrobbleQueue = StateObject(wrappedValue: queue)
         _nowPlayingMonitor = StateObject(wrappedValue: NowPlayingMonitor(queue: queue, authStore: authStore, client: client))

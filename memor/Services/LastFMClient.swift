@@ -23,7 +23,7 @@ final class LastFMClient: Sendable {
     enum LastFMError: LocalizedError {
         case missingCredentials
         case invalidResponse
-        case apiError(String)
+        case apiError(code: Int?, message: String)
 
         var errorDescription: String? {
             switch self {
@@ -31,9 +31,23 @@ final class LastFMClient: Sendable {
                 return "Add Last.fm API credentials in Resources/Secrets.swift before signing in."
             case .invalidResponse:
                 return "Last.fm returned an invalid response."
-            case .apiError(let message):
+            case .apiError(_, let message):
                 return message
             }
+        }
+
+        /// Session-key / authentication failures. See https://www.last.fm/api/errorcodes
+        /// 4 = authentication failed, 9 = invalid session key, 14 = unauthorized token,
+        /// 15 = token expired.
+        var isAuthenticationError: Bool {
+            guard case .apiError(let code, _) = self else { return false }
+            return [4, 9, 14, 15].contains(code ?? -1)
+        }
+
+        /// The auth token was never approved by the user (Last.fm error 14).
+        var isUnauthorizedToken: Bool {
+            guard case .apiError(let code, _) = self else { return false }
+            return code == 14
         }
     }
 
@@ -99,6 +113,12 @@ final class LastFMClient: Sendable {
         return true
     }
 
+    /// Whether the failure indicates the stored session key is no longer valid and the
+    /// user must re-authenticate.
+    func isAuthenticationError(_ error: Error) -> Bool {
+        (error as? LastFMError)?.isAuthenticationError ?? false
+    }
+
     private func commonTrackParams(_ track: Track) -> [String: String] {
         var params = [
             "artist": track.artist,
@@ -131,13 +151,13 @@ final class LastFMClient: Sendable {
         guard let http = response as? HTTPURLResponse else { throw LastFMError.invalidResponse }
         if !(200...299).contains(http.statusCode) {
             if let apiError = try? JSONDecoder().decode(APIError.self, from: data) {
-                throw LastFMError.apiError(apiError.message)
+                throw LastFMError.apiError(code: apiError.error, message: apiError.message)
             }
             throw LastFMError.invalidResponse
         }
 
         if let apiError = try? JSONDecoder().decode(APIError.self, from: data), apiError.error != nil {
-            throw LastFMError.apiError(apiError.message)
+            throw LastFMError.apiError(code: apiError.error, message: apiError.message)
         }
 
         if T.self == EmptyResponse.self {
@@ -189,9 +209,12 @@ private struct EmptyResponse: Decodable {
 private extension URLSession {
     static let lastFMDefault: URLSession = {
         let configuration = URLSessionConfiguration.default
-        configuration.waitsForConnectivity = true
+        // Fail fast when offline instead of hanging: a stalled request would otherwise
+        // wedge ScrobbleQueue's `isFlushing` guard. Offline failures fall into the
+        // transient-retry path and are retried on connectivity restore / foreground.
+        configuration.waitsForConnectivity = false
         configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 24 * 60 * 60
+        configuration.timeoutIntervalForResource = 120
         return URLSession(configuration: configuration)
     }()
 }

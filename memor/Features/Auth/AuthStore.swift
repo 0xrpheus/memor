@@ -11,6 +11,10 @@ final class AuthStore: ObservableObject {
     private let account = "LastFM"
     private let usernameKey = "lastfm.username"
 
+    /// Invoked after any sign-out (user-initiated or forced by an invalid session key) so
+    /// dependent state (e.g. the scrobble queue) can be cleared for the departing account.
+    var onSignOut: (@MainActor () -> Void)?
+
     var isAuthenticated: Bool {
         sessionKey != nil
     }
@@ -32,6 +36,7 @@ final class AuthStore: ObservableObject {
         UserDefaults.standard.removeObject(forKey: usernameKey)
         sessionKey = nil
         username = nil
+        onSignOut?()
     }
 
     private nonisolated static func readKeychainValue(service: String, account: String) -> String? {
